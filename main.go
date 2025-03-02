@@ -71,6 +71,13 @@ func main() {
 		log.Fatal("Failed to list Git files; possibly not a Git repository or Git is not installed")
 	}
 
+	// Print a description of the output for AI
+	fmt.Fprintf(
+		os.Stdout,
+		"Format description: The following are files in the Git repository"+
+			" of the project. The files are separated using {{File: filename.txt}}.\n\n",
+	)
+
 	// Use a scanner to read the output line by line
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	for scanner.Scan() {
