@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -66,6 +68,11 @@ func main() {
 			continue
 		}
 
+		// Skip files starting with a dot (hidden files)
+		if strings.HasPrefix(file, ".") {
+			continue
+		}
+
 		// Check if the file is a text file
 		if !isTextFile(file) {
 			log.Printf("Skipping non-text file: %s", file)
@@ -79,8 +86,14 @@ func main() {
 			continue
 		}
 
+		// Write a file header
+		fmt.Fprintf(os.Stdout, "{{File: %s}}\n", file)
+
 		// Write the content to stdout
 		os.Stdout.Write(content)
+
+		// Add a newline after each file
+		fmt.Fprintf(os.Stdout, "\n")
 	}
 
 	// Check for scanning errors
