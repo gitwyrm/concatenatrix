@@ -14,6 +14,14 @@ Files are separated with a file header using the format:
 
 This allows an AI service to still be able to refer to specific files in your code.
 
+## Installation
+
+You need to have Go and Git installed, then you can install the app directly from this Github repository:
+
+```bash
+go install github.com/gitwyrm/concatenatrix@latest
+```
+
 ## Usage
 
 The app outputs the concatenated files to stdout, so you can pipe the output to a file
