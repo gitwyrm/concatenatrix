@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 )
@@ -51,6 +52,17 @@ func isTextFile(filename string) bool {
 	return float64(nonPrintable)/float64(n) < 0.1
 }
 
+// checks if any component of the path starts with a dot, indicating a hidden file or directory.
+func isHiddenFile(filePath string) bool {
+	parts := strings.Split(filepath.ToSlash(filePath), "/") // Normalize path and split by /
+	for _, part := range parts {
+		if strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	// Execute 'git ls-files --cached' to get the list of tracked files
 	cmd := exec.Command("git", "ls-files", "--cached")
@@ -69,7 +81,8 @@ func main() {
 		}
 
 		// Skip files starting with a dot (hidden files)
-		if strings.HasPrefix(file, ".") {
+		if isHiddenFile(file) {
+			log.Printf("Skipping hidden file: %s", file)
 			continue
 		}
 
