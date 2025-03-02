@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"golang.design/x/clipboard"
 )
 
 // isTextFile checks if a file is likely a text file by sampling its initial bytes.
@@ -63,7 +66,24 @@ func isHiddenFile(filePath string) bool {
 	return false
 }
 
+// toClipboard copies the given string to the clipboard.
+func toClipboard(s string) {
+	// Initialize clipboard
+	err := clipboard.Init()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Copy text to clipboard
+	text := []byte(s)
+	clipboard.Write(clipboard.FmtText, text)
+}
+
 func main() {
+	// Define the -c flag
+	copyToClipboard := flag.Bool("c", false, "Copy the concatenated output to the clipboard")
+	flag.Parse()
+
 	// Execute 'git ls-files --cached' to get the list of tracked files
 	cmd := exec.Command("git", "ls-files", "--cached")
 	output, err := cmd.Output()
@@ -71,10 +91,11 @@ func main() {
 		log.Fatal("Failed to list Git files; possibly not a Git repository or Git is not installed")
 	}
 
-	// Print a description of the output for AI
-	fmt.Fprintf(
-		os.Stdout,
-		"Format description: The following are files in the Git repository"+
+	var buffer bytes.Buffer
+
+	// Write the description to the buffer
+	buffer.WriteString(
+		"Format description: The following are files in the Git repository" +
 			" of the project. The files are separated using {{File: filename.txt}}.\n\n",
 	)
 
@@ -107,17 +128,25 @@ func main() {
 		}
 
 		// Write a file header
-		fmt.Fprintf(os.Stdout, "{{File: %s}}\n", file)
+		buffer.WriteString(fmt.Sprintf("{{File: %s}}\n", file))
 
-		// Write the content to stdout
-		os.Stdout.Write(content)
+		// Write the content to the buffer
+		buffer.Write(content)
 
 		// Add a newline after each file
-		fmt.Fprintf(os.Stdout, "\n")
+		buffer.WriteString("\n")
 	}
 
 	// Check for scanning errors
 	if err := scanner.Err(); err != nil {
 		log.Printf("Error reading git ls-files output: %v", err)
+	}
+
+	// Output to clipboard or stdout based on the flag
+	if *copyToClipboard {
+		toClipboard(buffer.String())
+		log.Println("Output copied to clipboard")
+	} else {
+		os.Stdout.Write(buffer.Bytes())
 	}
 }
