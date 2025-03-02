@@ -30,3 +30,10 @@ The app outputs the concatenated files to stdout, so you can pipe the output to 
 cd path/to/your/git/repo
 concatenatrix > output.txt
 ```
+
+You can also specify the `-c` flag to copy the output directly to the clipboard.
+
+```bash
+cd path/to/your/git/repo
+concatenatrix -c
+```
