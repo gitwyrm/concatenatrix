@@ -6,13 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/log"
 	"golang.design/x/clipboard"
 )
 
@@ -122,13 +122,13 @@ func main() {
 
 		// Skip files starting with a dot (hidden files)
 		if isHiddenFile(file) {
-			log.Printf("Skipping hidden file: %s", file)
+			log.Info("Skipping hidden file", "file", file)
 			continue
 		}
 
 		// Check if the file is a text file
 		if !isTextFile(file) {
-			log.Printf("Skipping non-text file: %s", file)
+			log.Info("Skipping non-text file", "file", file)
 			continue
 		}
 
@@ -136,7 +136,7 @@ func main() {
 		if extMap != nil {
 			ext := filepath.Ext(file)
 			if _, ok := extMap[ext]; !ok {
-				log.Printf("Skipping file with unsupported extension: %s", file)
+				log.Info("Skipping file with unsupported extension", "file", file)
 				continue
 			}
 		}
@@ -144,7 +144,7 @@ func main() {
 		// Read the file content
 		content, err := os.ReadFile(file)
 		if err != nil {
-			log.Printf("Failed to read file %s: %v", file, err)
+			log.Error("Failed to read file", "file", file, "error", err)
 			continue
 		}
 
@@ -168,17 +168,17 @@ func main() {
 
 	// Check for scanning errors
 	if err := scanner.Err(); err != nil {
-		log.Printf("Error reading git ls-files output: %v", err)
+		log.Error("Error reading git ls-files output", "error", err)
 	}
 
 	// Output to clipboard or stdout based on the flag
 	if *copyToClipboard {
 		toClipboard(buffer.String())
-		log.Println("Output copied to clipboard")
+		log.Info("Output copied to clipboard")
 	} else {
 		os.Stdout.Write(buffer.Bytes())
 	}
 
 	// Output the summary of processed files
-	log.Printf("Processed %d files.\n", fileCount)
+	log.Info("Processed files", "count", fileCount)
 }
