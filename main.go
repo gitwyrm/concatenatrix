@@ -88,6 +88,8 @@ func main() {
 	interactive := flag.Bool("i", false, "Run interactive mode to select file extensions and other flags using huh forms")
 	flag.Parse()
 
+	var outputFilename string
+
 	if *interactive {
 		// Run git ls-files --cached to get list of tracked files and extract unique extensions.
 		cmd := exec.Command("git", "ls-files", "--cached")
@@ -152,6 +154,19 @@ func main() {
 			log.Fatal("Interactive confirm failed", "error", err)
 		}
 		*copyToClipboard = copyClip
+
+		// If copy to clipboard is not selected, ask for an output filename using huh, defaulting to output.txt
+		if !*copyToClipboard {
+			if err := huh.NewInput().
+				Title("Enter output filename (default: output.txt):").
+				Value(&outputFilename).
+				Run(); err != nil {
+				log.Fatal("Interactive input for filename failed", "error", err)
+			}
+			if strings.TrimSpace(outputFilename) == "" {
+				outputFilename = "output.txt"
+			}
+		}
 	}
 
 	// Execute 'git ls-files --cached' to get the list of tracked files
@@ -243,6 +258,13 @@ func main() {
 	if *copyToClipboard {
 		toClipboard(buffer.String())
 		log.Info("Output copied to clipboard")
+	} else if outputFilename != "" {
+		err := os.WriteFile(outputFilename, buffer.Bytes(), 0644)
+		if err != nil {
+			log.Error("Failed to write output file", "error", err)
+		} else {
+			log.Info("Output written to file", "file", outputFilename)
+		}
 	} else {
 		os.Stdout.Write(buffer.Bytes())
 	}
