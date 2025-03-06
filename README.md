@@ -31,9 +31,27 @@ cd path/to/your/git/repo
 concatenatrix > output.txt
 ```
 
-You can also specify the `-c` flag to copy the output directly to the clipboard.
+## Command-Line Flags
+`-h`: Print help
 
 ```bash
-cd path/to/your/git/repo
+concatenatrix -h
+```
+
+`-c`: Copy the output directly to the clipboard.
+
+```bash
 concatenatrix -c
+```
+
+`-ext`: Specify file extensions to include in the concatenation, by default all non-binary files tracked by Git are included. For example, to only include `.go` and `.txt` files:
+
+```bash
+concatenatrix -ext go,txt
+```
+
+`-n`: Include line numbers in the output
+
+```bash
+concatenatrix -n
 ```

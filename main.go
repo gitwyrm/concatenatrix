@@ -80,8 +80,10 @@ func toClipboard(s string) {
 }
 
 func main() {
-	// Define the -c flag
+	// Define the command-line flags
 	copyToClipboard := flag.Bool("c", false, "Copy the concatenated output to the clipboard")
+	extensions := flag.String("ext", "", "Comma-separated list of file extensions to include (without leading dot)")
+	includeLineNumbers := flag.Bool("n", false, "Include line numbers in the output")
 	flag.Parse()
 
 	// Execute 'git ls-files --cached' to get the list of tracked files
@@ -92,12 +94,22 @@ func main() {
 	}
 
 	var buffer bytes.Buffer
+	fileCount := 0 // Counter for successfully concatenated files
 
 	// Write the description to the buffer
 	buffer.WriteString(
 		"Format description: The following are files in the Git repository" +
 			" of the project. The files are separated using {{File: filename.txt}}.\n\n",
 	)
+
+	// Parse the extensions into a map for quick lookup
+	var extMap map[string]struct{}
+	if *extensions != "" {
+		extMap = make(map[string]struct{})
+		for _, ext := range strings.Split(*extensions, ",") {
+			extMap["."+strings.TrimSpace(ext)] = struct{}{}
+		}
+	}
 
 	// Use a scanner to read the output line by line
 	scanner := bufio.NewScanner(bytes.NewReader(output))
@@ -120,6 +132,15 @@ func main() {
 			continue
 		}
 
+		// Check file extension if the -ext flag is provided
+		if extMap != nil {
+			ext := filepath.Ext(file)
+			if _, ok := extMap[ext]; !ok {
+				log.Printf("Skipping file with unsupported extension: %s", file)
+				continue
+			}
+		}
+
 		// Read the file content
 		content, err := os.ReadFile(file)
 		if err != nil {
@@ -130,11 +151,19 @@ func main() {
 		// Write a file header
 		buffer.WriteString(fmt.Sprintf("{{File: %s}}\n", file))
 
-		// Write the content to the buffer
-		buffer.Write(content)
+		// Write the content to the buffer, with line numbers if specified
+		if *includeLineNumbers {
+			lines := strings.Split(string(content), "\n")
+			for i, line := range lines {
+				buffer.WriteString(fmt.Sprintf("%d: %s\n", i+1, line))
+			}
+		} else {
+			buffer.Write(content)
+		}
 
 		// Add a newline after each file
 		buffer.WriteString("\n")
+		fileCount++ // Increment the counter for each successfully processed file
 	}
 
 	// Check for scanning errors
@@ -149,4 +178,7 @@ func main() {
 	} else {
 		os.Stdout.Write(buffer.Bytes())
 	}
+
+	// Output the summary of processed files
+	log.Printf("Processed %d files.\n", fileCount)
 }
