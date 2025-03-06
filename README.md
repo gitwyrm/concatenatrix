@@ -38,6 +38,12 @@ concatenatrix > output.txt
 concatenatrix -h
 ```
 
+`-i`: Run interactive mode to select file extensions and other command line flags in a huh form
+
+```bash
+concatenatrix -i
+```
+
 `-c`: Copy the output directly to the clipboard.
 
 ```bash

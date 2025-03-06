@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/log"
 	"golang.design/x/clipboard"
 )
@@ -84,7 +85,74 @@ func main() {
 	copyToClipboard := flag.Bool("c", false, "Copy the concatenated output to the clipboard")
 	extensions := flag.String("ext", "", "Comma-separated list of file extensions to include (without leading dot)")
 	includeLineNumbers := flag.Bool("n", false, "Include line numbers in the output")
+	interactive := flag.Bool("i", false, "Run interactive mode to select file extensions and other flags using huh forms")
 	flag.Parse()
+
+	if *interactive {
+		// Run git ls-files --cached to get list of tracked files and extract unique extensions.
+		cmd := exec.Command("git", "ls-files", "--cached")
+		output, err := cmd.Output()
+		if err != nil {
+			log.Fatal("Failed to list Git files; possibly not a Git repository or Git is not installed", "error", err)
+		}
+
+		scanner := bufio.NewScanner(bytes.NewReader(output))
+		extSet := make(map[string]struct{})
+		for scanner.Scan() {
+			file := scanner.Text()
+			ext := filepath.Ext(file)
+			if ext != "" && ext != ".gitignore" {
+				extSet[ext] = struct{}{}
+			}
+		}
+
+		var extOptions []string
+		for ext := range extSet {
+			extOptions = append(extOptions, ext)
+		}
+
+		// Use charmbracelet/huh for interactive selection of file extensions.
+		var options []huh.Option[string]
+		for _, ext := range extOptions {
+			options = append(options, huh.NewOption(ext, ext))
+		}
+
+		var selectedExts []string
+		if err := huh.NewMultiSelect[string]().
+			Title("Select file extensions to include (leave empty for all):").
+			Options(options...).
+			Value(&selectedExts).
+			Run(); err != nil {
+			log.Fatal("Interactive selection failed", "error", err)
+		}
+
+		// Remove leading dot from each selected extension to match expected format.
+		for i, ext := range selectedExts {
+			selectedExts[i] = strings.TrimPrefix(ext, ".")
+		}
+
+		*extensions = strings.Join(selectedExts, ",")
+
+		// Ask for interactive confirmation for including line numbers.
+		var includeLn bool
+		if err := huh.NewConfirm().
+			Title("Include line numbers?").
+			Value(&includeLn).
+			Run(); err != nil {
+			log.Fatal("Interactive confirm failed", "error", err)
+		}
+		*includeLineNumbers = includeLn
+
+		// Ask for interactive confirmation for copying output to clipboard.
+		var copyClip bool
+		if err := huh.NewConfirm().
+			Title("Copy output to clipboard?").
+			Value(&copyClip).
+			Run(); err != nil {
+			log.Fatal("Interactive confirm failed", "error", err)
+		}
+		*copyToClipboard = copyClip
+	}
 
 	// Execute 'git ls-files --cached' to get the list of tracked files
 	cmd := exec.Command("git", "ls-files", "--cached")
