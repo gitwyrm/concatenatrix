@@ -14,6 +14,8 @@ Files are separated with a file header using the format:
 
 This allows an AI service to still be able to refer to specific files in your code.
 
+Can be used using simple command line flags or interactively using huh? forms from charm_, which lets you control the app using the cursor keys and enter/return in a nice terminal menu.
+
 ## Installation
 
 You need to have Go and Git installed, then you can install the app directly from this Github repository:
@@ -38,7 +40,7 @@ concatenatrix > output.txt
 concatenatrix -h
 ```
 
-`-i`: Run interactive mode to select file extensions and other command line flags in a huh form
+`-i`: Run interactive mode to select file extensions and other command line flags in a huh? form
 
 ```bash
 concatenatrix -i
