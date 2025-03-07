@@ -39,11 +39,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to list Git files", "error", err)
 	}
-	output, fileCount := buildOutput(files, opts)
+	output, fileCount, totalTokens := buildOutput(files, opts)
 	if err := writeOutput(output, opts); err != nil {
 		log.Error("Error writing output", "error", err)
 	}
-	log.Info("Processed files", "count", fileCount)
+	log.Info("Processed files", "count", fileCount, "tokens", humanize.Comma(totalTokens))
 }
 
 // estimateTokens estimates the number of tokens in a file based on its size.
@@ -264,9 +264,8 @@ func getTrackedFiles() ([]string, error) {
 }
 
 // buildOutput generates a concatenated string of file contents based on the provided options.
-func buildOutput(files []string, opts Options) (string, int) {
+func buildOutput(files []string, opts Options) (output string, fileCount int, totalTokens int64) {
 	var buffer bytes.Buffer
-	fileCount := 0
 	buffer.WriteString("Format description: The following are files in the Git repository" +
 		" of the project. The files are separated using {{File: filename.txt}}.\n\n")
 
@@ -288,6 +287,7 @@ func buildOutput(files []string, opts Options) (string, int) {
 			log.Info("Skipping file", "file", file)
 			continue
 		}
+		totalTokens += estimateTokens(file)
 		fileExt := filepath.Ext(file)
 		if extMap != nil {
 			if _, ok := extMap[fileExt]; !ok {
@@ -312,7 +312,7 @@ func buildOutput(files []string, opts Options) (string, int) {
 		buffer.WriteString("\n")
 		fileCount++
 	}
-	return buffer.String(), fileCount
+	return buffer.String(), fileCount, totalTokens
 }
 
 // writeOutput handles the output based on options.

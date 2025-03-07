@@ -52,7 +52,7 @@ func TestBuildOutput(t *testing.T) {
 	os.WriteFile(testFiles[0], []byte("Line 1\nLine 2\n"), 0644)
 	os.WriteFile(testFiles[1], []byte("Another file.\nLine 2."), 0644)
 
-	output, count := buildOutput(testFiles, opts)
+	output, count, _ := buildOutput(testFiles, opts)
 	if cnt := strings.Count(output, "{{File: "); cnt != 3 {
 		// one in the format description, one for each file
 		t.Errorf("Expected 3 file markers, got %d", cnt)
