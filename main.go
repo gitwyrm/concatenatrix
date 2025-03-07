@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/log"
+	"github.com/dustin/go-humanize"
 	"golang.design/x/clipboard"
 )
 
@@ -23,6 +25,12 @@ type Options struct {
 	Extensions         string
 	IncludeLineNumbers bool
 	OutputFilename     string
+}
+
+// ExtInfo holds the file count and total estimated tokens per file extension.
+type ExtInfo struct {
+	FileCount   int
+	TotalTokens int64
 }
 
 func main() {
@@ -36,6 +44,16 @@ func main() {
 		log.Error("Error writing output", "error", err)
 	}
 	log.Info("Processed files", "count", fileCount)
+}
+
+// estimateTokens estimates the number of tokens in a file based on its size.
+func estimateTokens(filename string) int64 {
+	fileInfo, err := os.Stat(filename)
+	if err != nil {
+		return 0
+	}
+	byteSize := fileInfo.Size()
+	return byteSize * 10 / 35 // divide by 3.5 to estimate tokens for code
 }
 
 // isTextFile checks if a file is likely a text file by sampling its initial bytes.
@@ -101,8 +119,9 @@ func toClipboard(s string) {
 	clipboard.Write(clipboard.FmtText, text)
 }
 
-// parseOptions parses command-line flags or runs an interactive prompt to configure concatenation options.
+// parseOptions parses command-line flags or runs an interactive prompt.
 func parseOptions() Options {
+	// Define command-line flags
 	copyToClipboard := flag.Bool("c", false, "Copy the concatenated output to the clipboard")
 	extensions := flag.String("ext", "", "Comma-separated list of file extensions to include (without leading dot)")
 	includeLineNumbers := flag.Bool("n", false, "Include line numbers in the output")
@@ -111,29 +130,51 @@ func parseOptions() Options {
 
 	var outputFilename string
 
+	// Handle interactive mode
 	if *interactive {
+		// Get list of tracked files (e.g., from Git)
 		files, err := getTrackedFiles()
 		if err != nil {
 			log.Fatal("Failed to list Git files", "error", err)
 		}
-		extSet := make(map[string]struct{})
+
+		// Build a map of extension info (file count and token estimate)
+		extInfoMap := make(map[string]ExtInfo)
 		for _, file := range files {
-			ext := filepath.Ext(file)
-			if ext != "" && ext != ".gitignore" {
-				extSet[ext] = struct{}{}
+			if isHiddenFile(file) || !isTextFile(file) {
+				continue
 			}
+			ext := filepath.Ext(file)
+			tokens := estimateTokens(file)
+			info, ok := extInfoMap[ext]
+			if !ok {
+				info = ExtInfo{FileCount: 0, TotalTokens: 0}
+			}
+			info.FileCount++
+			info.TotalTokens += tokens
+			extInfoMap[ext] = info
 		}
 
-		var extOptions []string
-		for ext := range extSet {
-			extOptions = append(extOptions, ext)
+		// Create a sorted list of extensions
+		var exts []string
+		for ext := range extInfoMap {
+			exts = append(exts, ext)
 		}
+		sort.Strings(exts)
 
+		// Build options for the interactive multi-select form
 		var options []huh.Option[string]
-		for _, ext := range extOptions {
-			options = append(options, huh.NewOption(ext, ext))
+		for _, ext := range exts {
+			info := extInfoMap[ext]
+			labelExt := ext
+			if ext == "" {
+				labelExt = "no extension"
+			}
+			label := fmt.Sprintf("%s (%d files, ~%s tokens)", labelExt, info.FileCount, humanize.Comma(info.TotalTokens))
+			options = append(options, huh.NewOption(label, ext))
 		}
 
+		// Run interactive multi-select for extensions
 		var selectedExts []string
 		if err := huh.NewMultiSelect[string]().
 			Title("Select file extensions to include (leave empty for all):").
@@ -143,11 +184,25 @@ func parseOptions() Options {
 			log.Fatal("Interactive selection failed", "error", err)
 		}
 
-		for i, ext := range selectedExts {
-			selectedExts[i] = strings.TrimPrefix(ext, ".")
+		// Process selected extensions
+		var processedExts []string
+		for _, ext := range selectedExts {
+			if ext != "" {
+				// Remove leading dot if present (e.g., ".md" -> "md")
+				processedExts = append(processedExts, strings.TrimPrefix(ext, "."))
+			} else {
+				// Include an empty string for "no extension"
+				processedExts = append(processedExts, "")
+			}
 		}
-		*extensions = strings.Join(selectedExts, ",")
+		// Join the extensions into a comma-separated string
+		*extensions = strings.Join(processedExts, ",")
+		// Special case: if only "no extension" was selected, set *extensions to ","
+		if len(selectedExts) == 1 && selectedExts[0] == "" {
+			*extensions = ","
+		}
 
+		// Run interactive confirm for line numbers
 		var includeLn bool
 		if err := huh.NewConfirm().
 			Title("Include line numbers?").
@@ -157,6 +212,7 @@ func parseOptions() Options {
 		}
 		*includeLineNumbers = includeLn
 
+		// Run interactive confirm for clipboard option
 		var copyClip bool
 		if err := huh.NewConfirm().
 			Title("Copy output to clipboard?").
@@ -166,6 +222,7 @@ func parseOptions() Options {
 		}
 		*copyToClipboard = copyClip
 
+		// If not copying to clipboard, prompt for output filename
 		if !*copyToClipboard {
 			if err := huh.NewInput().
 				Title("Enter output filename (default: output.txt):").
@@ -179,6 +236,7 @@ func parseOptions() Options {
 		}
 	}
 
+	// Return the parsed options
 	return Options{
 		CopyToClipboard:    *copyToClipboard,
 		Extensions:         *extensions,
@@ -187,7 +245,7 @@ func parseOptions() Options {
 	}
 }
 
-// getTrackedFiles retrieves the list of files currently tracked by Git in the repository.
+// getTrackedFiles retrieves the list of files currently tracked by Git.
 func getTrackedFiles() ([]string, error) {
 	cmd := exec.Command("git", "ls-files", "--cached")
 	output, err := cmd.Output()
@@ -216,21 +274,23 @@ func buildOutput(files []string, opts Options) (string, int) {
 	if opts.Extensions != "" {
 		extMap = make(map[string]struct{})
 		for _, ext := range strings.Split(opts.Extensions, ",") {
-			extMap["."+strings.TrimSpace(ext)] = struct{}{}
+			trimmed := strings.TrimSpace(ext)
+			if trimmed == "" {
+				extMap[""] = struct{}{}
+			} else {
+				extMap["."+trimmed] = struct{}{}
+			}
 		}
 	}
 
 	for _, file := range files {
-		if isHiddenFile(file) {
-			log.Info("Skipping hidden file", "file", file)
+		if isHiddenFile(file) || !isTextFile(file) {
+			log.Info("Skipping file", "file", file)
 			continue
 		}
-		if !isTextFile(file) {
-			log.Info("Skipping non-text file", "file", file)
-			continue
-		}
+		fileExt := filepath.Ext(file)
 		if extMap != nil {
-			if _, ok := extMap[filepath.Ext(file)]; !ok {
+			if _, ok := extMap[fileExt]; !ok {
 				log.Info("Skipping file with excluded extension", "file", file)
 				continue
 			}
@@ -255,8 +315,7 @@ func buildOutput(files []string, opts Options) (string, int) {
 	return buffer.String(), fileCount
 }
 
-// writeOutput either writes the concatenated content to a file, copies it to the clipboard,
-// or outputs to stdout based on the provided options.
+// writeOutput handles the output based on options.
 func writeOutput(output string, opts Options) error {
 	if opts.CopyToClipboard {
 		toClipboard(output)

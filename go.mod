@@ -2,7 +2,10 @@ module github.com/gitwyrm/concatenatrix
 
 go 1.24.0
 
-require golang.design/x/clipboard v0.7.0
+require (
+	github.com/dustin/go-humanize v1.0.1
+	golang.design/x/clipboard v0.7.0
+)
 
 require (
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -14,7 +17,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.2.3 // indirect
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/charmbracelet/x/term v0.2.0 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
