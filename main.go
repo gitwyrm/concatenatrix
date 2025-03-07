@@ -219,7 +219,7 @@ func main() {
 		if extMap != nil {
 			ext := filepath.Ext(file)
 			if _, ok := extMap[ext]; !ok {
-				log.Info("Skipping file with unsupported extension", "file", file)
+				log.Info("Skipping file with excluded extension", "file", file)
 				continue
 			}
 		}
