@@ -17,6 +17,27 @@ import (
 	"golang.design/x/clipboard"
 )
 
+// Options holds the configuration settings used for file concatenation operations.
+type Options struct {
+	CopyToClipboard    bool
+	Extensions         string
+	IncludeLineNumbers bool
+	OutputFilename     string
+}
+
+func main() {
+	opts := parseOptions()
+	files, err := getTrackedFiles()
+	if err != nil {
+		log.Fatal("Failed to list Git files", "error", err)
+	}
+	output, fileCount := buildOutput(files, opts)
+	if err := writeOutput(output, opts); err != nil {
+		log.Error("Error writing output", "error", err)
+	}
+	log.Info("Processed files", "count", fileCount)
+}
+
 // isTextFile checks if a file is likely a text file by sampling its initial bytes.
 func isTextFile(filename string) bool {
 	// Open the file
@@ -80,8 +101,8 @@ func toClipboard(s string) {
 	clipboard.Write(clipboard.FmtText, text)
 }
 
-func main() {
-	// Define the command-line flags
+// parseOptions parses command-line flags or runs an interactive prompt to configure concatenation options.
+func parseOptions() Options {
 	copyToClipboard := flag.Bool("c", false, "Copy the concatenated output to the clipboard")
 	extensions := flag.String("ext", "", "Comma-separated list of file extensions to include (without leading dot)")
 	includeLineNumbers := flag.Bool("n", false, "Include line numbers in the output")
@@ -91,17 +112,12 @@ func main() {
 	var outputFilename string
 
 	if *interactive {
-		// Run git ls-files --cached to get list of tracked files and extract unique extensions.
-		cmd := exec.Command("git", "ls-files", "--cached")
-		output, err := cmd.Output()
+		files, err := getTrackedFiles()
 		if err != nil {
-			log.Fatal("Failed to list Git files; possibly not a Git repository or Git is not installed", "error", err)
+			log.Fatal("Failed to list Git files", "error", err)
 		}
-
-		scanner := bufio.NewScanner(bytes.NewReader(output))
 		extSet := make(map[string]struct{})
-		for scanner.Scan() {
-			file := scanner.Text()
+		for _, file := range files {
 			ext := filepath.Ext(file)
 			if ext != "" && ext != ".gitignore" {
 				extSet[ext] = struct{}{}
@@ -113,7 +129,6 @@ func main() {
 			extOptions = append(extOptions, ext)
 		}
 
-		// Use charmbracelet/huh for interactive selection of file extensions.
 		var options []huh.Option[string]
 		for _, ext := range extOptions {
 			options = append(options, huh.NewOption(ext, ext))
@@ -128,14 +143,11 @@ func main() {
 			log.Fatal("Interactive selection failed", "error", err)
 		}
 
-		// Remove leading dot from each selected extension to match expected format.
 		for i, ext := range selectedExts {
 			selectedExts[i] = strings.TrimPrefix(ext, ".")
 		}
-
 		*extensions = strings.Join(selectedExts, ",")
 
-		// Ask for interactive confirmation for including line numbers.
 		var includeLn bool
 		if err := huh.NewConfirm().
 			Title("Include line numbers?").
@@ -145,7 +157,6 @@ func main() {
 		}
 		*includeLineNumbers = includeLn
 
-		// Ask for interactive confirmation for copying output to clipboard.
 		var copyClip bool
 		if err := huh.NewConfirm().
 			Title("Copy output to clipboard?").
@@ -155,7 +166,6 @@ func main() {
 		}
 		*copyToClipboard = copyClip
 
-		// If copy to clipboard is not selected, ask for an output filename using huh, defaulting to output.txt
 		if !*copyToClipboard {
 			if err := huh.NewInput().
 				Title("Enter output filename (default: output.txt):").
@@ -169,73 +179,69 @@ func main() {
 		}
 	}
 
-	// Execute 'git ls-files --cached' to get the list of tracked files
+	return Options{
+		CopyToClipboard:    *copyToClipboard,
+		Extensions:         *extensions,
+		IncludeLineNumbers: *includeLineNumbers,
+		OutputFilename:     outputFilename,
+	}
+}
+
+// getTrackedFiles retrieves the list of files currently tracked by Git in the repository.
+func getTrackedFiles() ([]string, error) {
 	cmd := exec.Command("git", "ls-files", "--cached")
 	output, err := cmd.Output()
 	if err != nil {
-		log.Fatal("Failed to list Git files; possibly not a Git repository or Git is not installed")
+		return nil, err
 	}
+	var files []string
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	for scanner.Scan() {
+		file := scanner.Text()
+		if file != "" {
+			files = append(files, file)
+		}
+	}
+	return files, nil
+}
 
+// buildOutput generates a concatenated string of file contents based on the provided options.
+func buildOutput(files []string, opts Options) (string, int) {
 	var buffer bytes.Buffer
-	fileCount := 0 // Counter for successfully concatenated files
+	fileCount := 0
+	buffer.WriteString("Format description: The following are files in the Git repository" +
+		" of the project. The files are separated using {{File: filename.txt}}.\n\n")
 
-	// Write the description to the buffer
-	buffer.WriteString(
-		"Format description: The following are files in the Git repository" +
-			" of the project. The files are separated using {{File: filename.txt}}.\n\n",
-	)
-
-	// Parse the extensions into a map for quick lookup
 	var extMap map[string]struct{}
-	if *extensions != "" {
+	if opts.Extensions != "" {
 		extMap = make(map[string]struct{})
-		for _, ext := range strings.Split(*extensions, ",") {
+		for _, ext := range strings.Split(opts.Extensions, ",") {
 			extMap["."+strings.TrimSpace(ext)] = struct{}{}
 		}
 	}
 
-	// Use a scanner to read the output line by line
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	for scanner.Scan() {
-		file := scanner.Text()
-		// Skip empty lines
-		if file == "" {
-			continue
-		}
-
-		// Skip files starting with a dot (hidden files)
+	for _, file := range files {
 		if isHiddenFile(file) {
 			log.Info("Skipping hidden file", "file", file)
 			continue
 		}
-
-		// Check if the file is a text file
 		if !isTextFile(file) {
 			log.Info("Skipping non-text file", "file", file)
 			continue
 		}
-
-		// Check file extension if the -ext flag is provided
 		if extMap != nil {
-			ext := filepath.Ext(file)
-			if _, ok := extMap[ext]; !ok {
+			if _, ok := extMap[filepath.Ext(file)]; !ok {
 				log.Info("Skipping file with excluded extension", "file", file)
 				continue
 			}
 		}
-
-		// Read the file content
 		content, err := os.ReadFile(file)
 		if err != nil {
 			log.Error("Failed to read file", "file", file, "error", err)
 			continue
 		}
-
-		// Write a file header
 		buffer.WriteString(fmt.Sprintf("{{File: %s}}\n", file))
-
-		// Write the content to the buffer, with line numbers if specified
-		if *includeLineNumbers {
+		if opts.IncludeLineNumbers {
 			lines := strings.Split(string(content), "\n")
 			for i, line := range lines {
 				buffer.WriteString(fmt.Sprintf("%d: %s\n", i+1, line))
@@ -243,32 +249,27 @@ func main() {
 		} else {
 			buffer.Write(content)
 		}
-
-		// Add a newline after each file
 		buffer.WriteString("\n")
-		fileCount++ // Increment the counter for each successfully processed file
+		fileCount++
 	}
+	return buffer.String(), fileCount
+}
 
-	// Check for scanning errors
-	if err := scanner.Err(); err != nil {
-		log.Error("Error reading git ls-files output", "error", err)
-	}
-
-	// Output to clipboard or stdout based on the flag
-	if *copyToClipboard {
-		toClipboard(buffer.String())
+// writeOutput either writes the concatenated content to a file, copies it to the clipboard,
+// or outputs to stdout based on the provided options.
+func writeOutput(output string, opts Options) error {
+	if opts.CopyToClipboard {
+		toClipboard(output)
 		log.Info("Output copied to clipboard")
-	} else if outputFilename != "" {
-		err := os.WriteFile(outputFilename, buffer.Bytes(), 0644)
+	} else if opts.OutputFilename != "" {
+		err := os.WriteFile(opts.OutputFilename, []byte(output), 0644)
 		if err != nil {
 			log.Error("Failed to write output file", "error", err)
 		} else {
-			log.Info("Output written to file", "file", outputFilename)
+			log.Info("Output written to file", "file", opts.OutputFilename)
 		}
 	} else {
-		os.Stdout.Write(buffer.Bytes())
+		os.Stdout.Write([]byte(output))
 	}
-
-	// Output the summary of processed files
-	log.Info("Processed files", "count", fileCount)
+	return nil
 }
