@@ -2,7 +2,7 @@
 
 A simple command-line utility written in Go to concatenate all non-binary files in a local Git repository so that a project can be easily dropped as a single file into an AI service like ChatGPT or Grok to ask questions about it.
 
-![Image](https://github.com/user-attachments/assets/6fd6eb5c-a328-4e9d-a795-db6226a6acdb)
+![Image](https://github.com/user-attachments/assets/64ed2c11-8ca4-4456-b4e2-3249a50f59dd)
 
 Uses a simple heuristic to detect if a file is binary (checking the first 512 bytes for null bytes and UTF-8 validity).
 
