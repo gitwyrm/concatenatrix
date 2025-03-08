@@ -87,3 +87,32 @@ func TestWriteOutput(t *testing.T) {
 
 	os.Remove(outputFile)
 }
+func TestEstimateTokens(t *testing.T) {
+	tests := []struct {
+		filename string
+		content  []byte
+		expected int64
+	}{
+		{"empty.txt", []byte(""), 0},
+		{"small.txt", []byte("This is a small file."), 6},
+		{"medium.txt", []byte(strings.Repeat("a", 350)), 100},
+		{"large.txt", []byte(strings.Repeat("a", 700)), 200},
+	}
+
+	for _, tt := range tests {
+		// Write the test file
+		err := os.WriteFile(tt.filename, tt.content, 0644)
+		if err != nil {
+			t.Fatalf("Failed to write test file %s: %v", tt.filename, err)
+		}
+
+		// Ensure the file is removed after the test
+		defer os.Remove(tt.filename)
+
+		// Estimate tokens
+		result := estimateTokens(tt.filename)
+		if result != tt.expected {
+			t.Errorf("estimateTokens(%q) = %d, want %d", tt.filename, result, tt.expected)
+		}
+	}
+}
